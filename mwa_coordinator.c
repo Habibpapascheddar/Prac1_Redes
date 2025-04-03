@@ -72,17 +72,6 @@ resultType_t MLME_NWK_SapHandler (nwkMessage_t* pMsg, instanceId_t instanceId);
 resultType_t MCPS_NWK_SapHandler (mcpsToNwkMessage_t* pMsg, instanceId_t instanceId);
 extern void Mac_SetExtendedAddress(uint8_t *pAddr, instanceId_t instanceId);
 
-#define DEV_TO_ADMIT 5
-typedef struct{
-	uint16_t short_address;
-	uint64_t Extended_address;
-	bool_t DeviceType;
-	bool_t RxOnWhenldle;
-	uint8_t Counter;
-
-}APPCORD_s;
-
-APPCORD_s DEV_AD[DEV_TO_ADMIT];
 /************************************************************************************
 *************************************************************************************
 * Private type definitions
@@ -133,6 +122,18 @@ osaEventId_t          mAppEvent;
 
 /* The current state of the applications state machine */
 uint8_t gState;
+
+#define DEV_TO_ADMIT 1
+typedef struct{
+	uint16_t short_address;
+	uint64_t Extended_address;
+	bool_t DeviceType;
+	bool_t RxOnWhenldle;
+	uint8_t Counter;
+
+}APPCORD_s;
+
+APPCORD_s DEV_AD[DEV_TO_ADMIT];
 
 /************************************************************************************
 *************************************************************************************
@@ -576,6 +577,7 @@ static void App_HandleScanEdConfirm(nwkMessage_t *pMsg)
           idx++;
       }
   }
+  mLogicalChannel = 11;
 #endif /* gPHY_802_15_4g_d */     
 
   chMask &= ~(1 << mLogicalChannel);
@@ -717,97 +719,107 @@ static uint8_t App_StartCoordinator( uint8_t appInstance )
 ******************************************************************************/
 static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstance)
 {
-  mlmeMessage_t *pMsg;
-  mlmeAssociateRes_t *pAssocRes;
- 
-  Serial_Print(interfaceId,"Sending the MLME-Associate Response message to the MAC...", gAllowToBlock_d);
- 
-  /* Allocate a message for the MLME */
-  pMsg = MSG_AllocType(mlmeMessage_t);
-  if(pMsg != NULL)
-  {
-    /* This is a MLME-ASSOCIATE.res command */
-    pMsg->msgType = gMlmeAssociateRes_c;
+	  mlmeMessage_t *pMsg;
+	  mlmeAssociateRes_t *pAssocRes;
 
-    /* Create the Associate response message data. */
-    pAssocRes = &pMsg->msgData.associateRes;
+	  Serial_Print(interfaceId,"Sending the MLME-Associate Response message to the MAC...", gAllowToBlock_d);
 
-    /* Assign a short address to the device. In this example we simply
-       choose 0x0001. Though, all devices and coordinators in a PAN must have
-       different short addresses. However, if a device do not want to use
-       short addresses at all in the PAN, a short address of 0xFFFE must
-       be assigned to it. */
-    	static uint8_t DEV_count=0;
-    	bool_t dev_connected=0;
-    	static uint8_t DEV_currently_short=0;
-    	uint8_t DEV_detected=0;
-    	if(DEV_count==DEV_TO_ADMIT){
-    	for(int i=0;i<DEV_TO_ADMIT;i++){
-    		if(DEV_AD[i].Extended_address==pMsgIn->msgData.associateInd.deviceAddress){
-    			dev_connected=1;
-    			DEV_detected=1;
+	  /* Allocate a message for the MLME */
+	  pMsg = MSG_AllocType(mlmeMessage_t);
+	  if(pMsg != NULL)
+	  {
+	    /* This is a MLME-ASSOCIATE.res command */
+	    pMsg->msgType = gMlmeAssociateRes_c;
 
-    			return 0;
-    		};
-    	};
-    	if(dev_connected==0){
-    		DEV_AD[DEV_count].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
-    		 pAssocRes->assocShortAddress = DEV_currently_short;
-    		 DEV_AD[DEV_count].short_address=DEV_currently_short;
-    		 DEV_currently_short++;
-    		 Serial_Print(interfaceId, "Dispositivo nuevo conectado con short Address de ", gAllowToBlock_d);Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_count].short_address, 2, gPrtHexNoFormat_c);
-     		DEV_count++;
-    	}else{
-    		pAssocRes->assocShortAddress = DEV_AD[DEV_detected].short_address;
-   		 Serial_Print(interfaceId, "Dispositivo ya enlazado anteriormente con short Address de ", gAllowToBlock_d); Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_detected].short_address, 2, gPrtHexNoFormat_c);
-    	};
-        FLib_MemCpy(&pAssocRes->deviceAddress, &pMsgIn->msgData.associateInd.deviceAddress, 8);
-        /* Association granted. May also be gPanAtCapacity_c or gPanAccessDenied_c. */
-        pAssocRes->status = gSuccess_c;
-        /* Do not use security */
-        pAssocRes->securityLevel = gMacSecurityNone_c;
+	    /* Create the Associate response message data. */
+	    pAssocRes = &pMsg->msgData.associateRes;
 
-        /* Save device info. */
-        //FLib_MemCpy(&mDeviceShortAddress, &pAssocRes->assocShortAddress, 2);
-        //FLib_MemCpy(&mDeviceLongAddress,  &pAssocRes->deviceAddress,     8);
+	    /* Assign a short address to the device. In this example we simply
+	       choose 0x0001. Though, all devices and coordinators in a PAN must have
+	       different short addresses. However, if a device do not want to use
+	       short addresses at all in the PAN, a short address of 0xFFFE must
+	       be assigned to it. */
+	    	static uint8_t DEV_count=0;
 
-        /* Send the Associate Response to the MLME. */
-        if( gSuccess_c == NWK_MLME_SapHandler( pMsg, macInstance ) )
-        {
-          Serial_Print( interfaceId,"Done\n\r", gAllowToBlock_d );
-          return errorNoError;
-        }
-        else
-        {
-          /* One or more parameters in the message were invalid. */
-          Serial_Print( interfaceId,"Invalid parameter!\n\r", gAllowToBlock_d );
-          return errorInvalidParameter;
-        }
-    	}else{
-    		DEV_count=0;
-    		Serial_Print(interfaceId, "Máximo de dispositivos alcanzado. Lo siento BB",gAllowToBlock_d);
-    	};
-//
-//    if(pMsgIn->msgData.associateInd.capabilityInfo & gCapInfoAllocAddr_c)
-//    {
-//      /* Assign a unique short address less than 0xfffe if the device requests so. */
-//      pAssocRes->assocShortAddress = 0x0001;
-//    }
-//    else
-//    {
-//      /* A short address of 0xfffe means that the device is granted access to
-//         the PAN (Associate successful) but that long addressing is used.*/
-//      pAssocRes->assocShortAddress = 0xFFFE;
-//    }
-    /* Get the 64 bit address of the device requesting association. */
+	    	bool_t dev_connected=0;
 
-  }
-  else
-  {
-    /* Allocation of a message buffer failed. */
-    Serial_Print(interfaceId,"Message allocation failed!\n\r", gAllowToBlock_d);
-    return errorAllocFailed;
-  }
+	    	static uint8_t DEV_currently_short=1;
+
+	    	uint8_t DEV_detected=0;
+	    	if(DEV_count<DEV_TO_ADMIT){
+	    	for(int i=0;i<DEV_TO_ADMIT;i++){
+	    		if(DEV_AD[i].Extended_address==pMsgIn->msgData.associateInd.deviceAddress){
+	    			dev_connected=1;
+	    			DEV_detected=i;
+	    			break;
+	    			//return 0;
+	    		};
+	    	};
+	    	if(dev_connected==0){
+	    		DEV_AD[DEV_count].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
+	    		 pAssocRes->assocShortAddress = DEV_currently_short;
+	    		 DEV_AD[DEV_count].short_address=DEV_currently_short;
+	    		 DEV_currently_short++;
+	    		 Serial_Print(interfaceId, "Dispositivo nuevo conectado con short Address de ", gAllowToBlock_d);Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_count].short_address, 2, gPrtHexNoFormat_c);
+	     		DEV_count++;
+	    	}else{
+	    		pAssocRes->assocShortAddress = DEV_AD[DEV_detected].short_address;
+	   		 Serial_Print(interfaceId, "Dispositivo ya enlazado anteriormente con short Address de ", gAllowToBlock_d); Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_detected].short_address, 2, gPrtHexNoFormat_c);
+	    	};
+	        FLib_MemCpy(&pAssocRes->deviceAddress, &pMsgIn->msgData.associateInd.deviceAddress, 8);
+	        /* Association granted. May also be gPanAtCapacity_c or gPanAccessDenied_c. */
+	        pAssocRes->status = gSuccess_c;
+	        /* Do not use security */
+	        pAssocRes->securityLevel = gMacSecurityNone_c;
+
+	        /* Save device info. */
+	        FLib_MemCpy(&mDeviceShortAddress, &pAssocRes->assocShortAddress, 2);
+	        FLib_MemCpy(&mDeviceLongAddress,  &pAssocRes->deviceAddress,     8);
+
+	        /* Send the Associate Response to the MLME. */
+
+	    	}else{
+	    		//DEV_count=0;
+	    		Serial_Print(interfaceId, "Máximo de dispositivos alcanzado. Lo siento BB",gAllowToBlock_d);
+		        FLib_MemCpy(&pAssocRes->deviceAddress, &pMsgIn->msgData.associateInd.deviceAddress, 8);
+		        /* Association granted. May also be gPanAtCapacity_c or gPanAccessDenied_c. */
+		        pAssocRes->status = gPanAccessDenied_c;
+		        /* Do not use security */
+		        pAssocRes->securityLevel = gMacSecurityNone_c;
+
+	    	};
+	    	if( gSuccess_c == NWK_MLME_SapHandler( pMsg, macInstance ) )
+	    	{
+	    		Serial_Print( interfaceId,"Done\n\r", gAllowToBlock_d );
+	    		return errorNoError;
+	    	}
+	    	else
+	    	{
+	    		/* One or more parameters in the message were invalid. */
+	    		Serial_Print( interfaceId,"Invalid parameter!\n\r", gAllowToBlock_d );
+	    		return errorInvalidParameter;
+	    	}
+	//
+	//    if(pMsgIn->msgData.associateInd.capabilityInfo & gCapInfoAllocAddr_c)
+	//    {
+	//      /* Assign a unique short address less than 0xfffe if the device requests so. */
+	//      pAssocRes->assocShortAddress = 0x0001;
+	//    }
+	//    else
+	//    {
+	//      /* A short address of 0xfffe means that the device is granted access to
+	//         the PAN (Associate successful) but that long addressing is used.*/
+	//      pAssocRes->assocShortAddress = 0xFFFE;
+	//    }
+	    /* Get the 64 bit address of the device requesting association. */
+
+	  }
+	  else
+	  {
+	    /* Allocation of a message buffer failed. */
+	    Serial_Print(interfaceId,"Message allocation failed!\n\r", gAllowToBlock_d);
+	    return errorAllocFailed;
+	  }
 }
 
 /******************************************************************************
