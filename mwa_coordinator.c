@@ -870,6 +870,7 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
     Serial_PrintHex(interfaceId, (uint8_t*)&PayLoad_Size, 2, gPrtHexNoFormat_c);
     Serial_Print(interfaceId, "\n\r", gAllowToBlock_d);
 
+    // commit check
 
     break;
 
