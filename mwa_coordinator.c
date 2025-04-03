@@ -123,7 +123,7 @@ osaEventId_t          mAppEvent;
 /* The current state of the applications state machine */
 uint8_t gState;
 
-#define DEV_TO_ADMIT 1
+#define DEV_TO_ADMIT 5
 typedef struct{
 	uint16_t short_address;
 	uint64_t Extended_address;
