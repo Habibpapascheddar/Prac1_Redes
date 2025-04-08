@@ -38,6 +38,7 @@
 #include "fsl_os_abstraction.h"
 
 #include "mwa_coordinator.h"
+#include "MyNewTask.h"
 
 /************************************************************************************
 *************************************************************************************
@@ -169,9 +170,9 @@ void main_task(uint32_t param)
 
 
 
-        App_init();
+        //App_init();
 
-        MyTask_Init(); /* INIT MY NEW TASK */
+        //MyTask_Init(); /* INIT MY NEW TASK */
     }
 
     /* Call application task */
@@ -349,7 +350,7 @@ void AppThread(uint32_t argument)
                   }
               }
           }
-          MyTaskTimer_Start(); /*Start LED flashing with your task*/
+          //MyTaskTimer_Start(); /*Start LED flashing with your task*/
           break; 
           
       case stateListen:
@@ -572,6 +573,8 @@ static void App_HandleScanEdConfirm(nwkMessage_t *pMsg)
           idx++;
       }
   }
+
+  mLogicalChannel = 11;
 #endif /* gPHY_802_15_4g_d */     
 
   chMask &= ~(1 << mLogicalChannel);
@@ -794,7 +797,7 @@ static uint8_t App_HandleMlmeInput(nwkMessage_t *pMsg, uint8_t appInstance)
   case gMlmeAssociateInd_c:
     Serial_Print(interfaceId,"Received an MLME-Associate Indication from the MAC\n\r", gAllowToBlock_d);
     /* A device sent us an Associate Request. We must send back a response.  */
-    MyTaskTimer_Stop();
+    //MyTaskTimer_Stop();
     return App_SendAssociateResponse(pMsg, appInstance);
     
   case gMlmeCommStatusInd_c:
