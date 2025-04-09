@@ -832,20 +832,32 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
        or application layer when data has been received. We simply
        copy the received data to the UART. */
     Serial_SyncWrite( interfaceId,pMsgIn->msgData.dataInd.pMsdu, pMsgIn->msgData.dataInd.msduLength );
+    LED_TurnOffAllLeds();
     if(*pMsgIn->msgData.dataInd.pMsdu == 0)
     {
     	//Led_RGB_Green(LED_RGB,0xFF);
-    	Led_RGB(LED_RGB,0x00,0xFF,0x00);
+    	//Led_RGB(LED_RGB,0x00,0xFF,0x00);
+    	LED_TurnOnLed(LED3);
+		LED_TurnOffLed(LED2);
+		LED_TurnOffLed(LED4);
     }else if (*pMsgIn->msgData.dataInd.pMsdu == 1){
     	//Led_RGB_Red(LED_RGB,0xFF);
-    	Led_RGB(LED_RGB,0xFF,0x00,0x00);
+    	//Led_RGB(LED_RGB,0xFF,0x00,0x00);
+    	LED_TurnOffLed(LED4);
+		LED_TurnOnLed(LED2);
+		LED_TurnOffLed(LED3);
     }else if (*pMsgIn->msgData.dataInd.pMsdu == 2){
-    	Led_RGB(LED_RGB,0x00,0x00,0xFF);
+    	//Led_RGB(LED_RGB,0x00,0x00,0xFF);
     	//Led_RGB_Blue(LED_RGB,0xFF);
+        LED_TurnOffLed(LED3);
+        LED_TurnOffLed(LED2);
+        LED_TurnOnLed(LED4);
     }else if(*pMsgIn->msgData.dataInd.pMsdu == 3){
-    	Led_RGB(LED_RGB,0xFF,0xFF,0xFF);
+    	//Led_RGB(LED_RGB,0xFF,0xFF,0xFF);
+    	LED_TurnOnAllLeds();
     }else{
-    	Led_RGB(LED_RGB,0x00,0x00,0x00);
+    	//Led_RGB(LED_RGB,0x00,0x00,0x00);
+    	LED_TurnOffAllLeds();
     }
 
 
