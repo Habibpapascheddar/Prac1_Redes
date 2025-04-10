@@ -124,16 +124,42 @@ osaEventId_t          mAppEvent;
 uint8_t gState;
 
 #define DEV_TO_ADMIT 5
+typedef enum{
+	NOT_ACTIVE,
+	ACTIVE
+
+}STATUS_t;
 typedef struct{
 	uint16_t short_address;
 	uint64_t Extended_address;
 	bool_t DeviceType;
 	bool_t RxOnWhenldle;
 	uint8_t Counter;
-
+	STATUS_t status;
+	uint8_t currently_counter;
+	uint8_t last_counter;
 }APPCORD_s;
 
-APPCORD_s DEV_AD[DEV_TO_ADMIT];
+APPCORD_s DEV_AD[10];
+APPCORD_s current_devices[DEV_TO_ADMIT];
+tmrTimerID_t myTimerID = gTmrInvalidTimerID_c;
+uint8_t global_short=1;
+
+static uint8_t DEV_count=0;
+static void myTaskTimerCallback(void *param)
+{
+	static uint8_t counter=0;
+	if(current_devices[counter].status==ACTIVE){//Corroboramos el status del miembro del arreglo
+		if(current_devices[counter].currently_counter==current_devices[counter].last_counter){
+			current_devices[counter].status=NOT_ACTIVE;
+			DEV_count--;
+		}
+	}
+	if(counter<4){
+		counter++;
+	}else
+		counter=0;
+}
 
 /************************************************************************************
 *************************************************************************************
@@ -681,6 +707,13 @@ static uint8_t App_StartCoordinator( uint8_t appInstance )
     /* Don't use security */
     pStartReq->coordRealignSecurityLevel = gMacSecurityNone_c;
     pStartReq->beaconSecurityLevel       = gMacSecurityNone_c;
+    myTimerID = TMR_AllocateTimer();
+    TMR_StartIntervalTimer(myTimerID, /*myTimerID*/
+    					5000, /* Timer's Timeout */
+    					myTaskTimerCallback, /* pointer to
+    myTaskTimerCallback function */
+    					NULL
+    			);
 
     /* Send the Start request to the MLME. */
     if(NWK_MLME_SapHandler( pMsg, macInstance ) != gSuccess_c)
@@ -739,33 +772,42 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 	       different short addresses. However, if a device do not want to use
 	       short addresses at all in the PAN, a short address of 0xFFFE must
 	       be assigned to it. */
-	    	static uint8_t DEV_count=0;
-
 	    	bool_t dev_connected=0;
-
-	    	static uint8_t DEV_currently_short=1;
-
 	    	uint8_t DEV_detected=0;
 	    	if(DEV_count<DEV_TO_ADMIT){
-	    	for(int i=0;i<DEV_TO_ADMIT;i++){
+	    	for(int i=0;i<10;i++){
 	    		if(DEV_AD[i].Extended_address==pMsgIn->msgData.associateInd.deviceAddress){
+	    			for(int j=0;j<DEV_TO_ADMIT;j++){
+	    				if(current_devices[j].status==NOT_ACTIVE){
+	    					current_devices[j].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
+	    					pAssocRes->assocShortAddress = DEV_AD[i].short_address;
+	    					current_devices[j].short_address=DEV_AD[i].short_address;
+	    					current_devices[j].status=ACTIVE;
+	    					pAssocRes->assocShortAddress = DEV_AD[DEV_detected].short_address;
+	    				   	Serial_Print(interfaceId, "Dispositivo ya enlazado anteriormente con short Address de ", gAllowToBlock_d); Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_detected].short_address, 2, gPrtHexNoFormat_c);
+	    					break;
+	    				}
 	    			dev_connected=1;
 	    			DEV_detected=i;
-	    			break;
-	    			//return 0;
+	    			break;};
 	    		};
 	    	};
 	    	if(dev_connected==0){
-	    		DEV_AD[DEV_count].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
-	    		 pAssocRes->assocShortAddress = DEV_currently_short;
-	    		 DEV_AD[DEV_count].short_address=DEV_currently_short;
-	    		 DEV_currently_short++;
-	    		 Serial_Print(interfaceId, "Dispositivo nuevo conectado con short Address de ", gAllowToBlock_d);Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_count].short_address, 2, gPrtHexNoFormat_c);
+	    		for(int j=0;j<DEV_TO_ADMIT;j++){
+	    			if(current_devices[j].status==NOT_ACTIVE){
+	    				current_devices[j].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
+	    	    		 pAssocRes->assocShortAddress =global_short;
+	    	    		 current_devices[j].short_address=global_short;
+	    	    		 current_devices[j].status=ACTIVE;
+	    	    		 Serial_Print(interfaceId, "Dispositivo nuevo conectado con short Address de ", gAllowToBlock_d);Serial_PrintHex(interfaceId, (uint8_t*)&current_devices[j].short_address, 2, gPrtHexNoFormat_c);
+	    	    		 DEV_AD[global_short].short_address=global_short;
+	    	    		 DEV_AD[global_short].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
+	    				break;
+	    			}
+	    		}
 	     		DEV_count++;
-	    	}else{
-	    		pAssocRes->assocShortAddress = DEV_AD[DEV_detected].short_address;
-	   		 Serial_Print(interfaceId, "Dispositivo ya enlazado anteriormente con short Address de ", gAllowToBlock_d); Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_detected].short_address, 2, gPrtHexNoFormat_c);
-	    	};
+	     		global_short++;
+	    	}
 	        FLib_MemCpy(&pAssocRes->deviceAddress, &pMsgIn->msgData.associateInd.deviceAddress, 8);
 	        /* Association granted. May also be gPanAtCapacity_c or gPanAccessDenied_c. */
 	        pAssocRes->status = gSuccess_c;
@@ -799,19 +841,7 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 	    		Serial_Print( interfaceId,"Invalid parameter!\n\r", gAllowToBlock_d );
 	    		return errorInvalidParameter;
 	    	}
-	//
-	//    if(pMsgIn->msgData.associateInd.capabilityInfo & gCapInfoAllocAddr_c)
-	//    {
-	//      /* Assign a unique short address less than 0xfffe if the device requests so. */
-	//      pAssocRes->assocShortAddress = 0x0001;
-	//    }
-	//    else
-	//    {
-	//      /* A short address of 0xfffe means that the device is granted access to
-	//         the PAN (Associate successful) but that long addressing is used.*/
-	//      pAssocRes->assocShortAddress = 0xFFFE;
-	//    }
-	    /* Get the 64 bit address of the device requesting association. */
+
 
 	  }
 	  else
@@ -860,26 +890,69 @@ static uint8_t App_HandleMlmeInput(nwkMessage_t *pMsg, uint8_t appInstance)
 ******************************************************************************/
 static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
 {
-  switch(pMsgIn->msgType)
-  {
-    /* The MCPS-Data confirm is sent by the MAC to the network
-       or application layer when data has been sent. */
-  case gMcpsDataCnf_c:
-    if(mcPendingPackets)
-      mcPendingPackets--;
-    break;
+	  switch(pMsgIn->msgType)
+	  {
+	    /* The MCPS-Data confirm is sent by the MAC to the network
+	       or application layer when data has been sent. */
+	  case gMcpsDataCnf_c:
+	    if(mcPendingPackets)
+	      mcPendingPackets--;
+	    break;
 
-  case gMcpsDataInd_c:
-    /* The MCPS-Data indication is sent by the MAC to the network
-       or application layer when data has been received. We simply
-       copy the received data to the UART. */
-    Serial_SyncWrite( interfaceId,pMsgIn->msgData.dataInd.pMsdu, pMsgIn->msgData.dataInd.msduLength );
-    break;
-    
-  default:
-    break;
-  }
+	  case gMcpsDataInd_c:
+	    /* The MCPS-Data indication is sent by the MAC to the network
+	       or application layer when data has been received. We simply
+	       copy the received data to the UART. */
+	    Serial_SyncWrite( interfaceId,pMsgIn->msgData.dataInd.pMsdu, pMsgIn->msgData.dataInd.msduLength );
+	    if(pMsgIn->msgData.dataInd.pMsdu[8] == '0')
+		{
+			LED_TurnOnLed(LED3);
+			LED_TurnOffLed(LED2);
+			LED_TurnOffLed(LED4);
+		}else if (pMsgIn->msgData.dataInd.pMsdu[8]  == '1'){
+			LED_TurnOffLed(LED4);
+			LED_TurnOnLed(LED2);
+			LED_TurnOffLed(LED3);
+		}else if (pMsgIn->msgData.dataInd.pMsdu[8]  == '2'){
+			LED_TurnOffLed(LED3);
+			LED_TurnOffLed(LED2);
+			LED_TurnOnLed(LED4);
+		}else if(pMsgIn->msgData.dataInd.pMsdu[8]  == '3'){
+			LED_TurnOnAllLeds();
+		}else{
+
+			LED_TurnOffAllLeds();
+		}
+	    current_devices[pMsgIn->msgData.dataInd.srcAddr].last_counter=current_devices[pMsgIn->msgData.dataInd.srcAddr].currently_counter;
+	    current_devices[pMsgIn->msgData.dataInd.srcAddr].currently_counter=pMsgIn->msgData.dataInd.pMsdu[8];
+
+		//Dirección de quien lo envio
+	    uint16_t NodeAddr = pMsgIn->msgData.dataInd.srcAddr;
+	    Serial_Print(interfaceId, "\n \r  Mensaje recibido de: 0x", gAllowToBlock_d);
+	    Serial_PrintHex(interfaceId, (uint8_t*)&NodeAddr, 2, gPrtHexNoFormat_c);
+	    Serial_Print(interfaceId, "\n\r", gAllowToBlock_d);
+
+	    //LQI
+	    uint16_t LQI = pMsgIn->msgData.dataInd.mpduLinkQuality;
+	    Serial_Print(interfaceId, "LQI : ", gAllowToBlock_d);
+	    Serial_PrintHex(interfaceId, (uint8_t*)&LQI, 2, gPrtHexNoFormat_c);
+	    Serial_Print(interfaceId, "\n\r", gAllowToBlock_d);
+
+	    //Tamaño Payload
+	    uint16_t PayLoad_Size = pMsgIn->msgData.dataInd.msduLength;
+	    Serial_Print(interfaceId, "Tamaño del Payload: ", gAllowToBlock_d);
+	    Serial_PrintHex(interfaceId, (uint8_t*)&PayLoad_Size, 2, gPrtHexNoFormat_c);
+	    Serial_Print(interfaceId, "\n\r", gAllowToBlock_d);
+
+	    // commit check
+
+	    break;
+
+	  default:
+	    break;
+	  }
 }
+
 
 /******************************************************************************
 * The App_WaitMsg(nwkMessage_t *pMsg, uint8_t msgType) function does not, as
