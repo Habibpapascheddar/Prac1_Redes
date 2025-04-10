@@ -29,6 +29,9 @@
 #include "FunctionLib.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include "pin_mux.h"
+#include "fsl_gpio.h"
+#include "fsl_common.h"
 
 
 #if mEnterLowPowerWhenIdle_c
@@ -46,6 +49,10 @@
 /* KSDK */
 #include "board.h"
 #include "fsl_os_abstraction.h"
+
+
+#define BOARD_SW3_GPIO_PIN 4U
+#define BOARD_SW4_GPIO_PIN 5U
 
 /************************************************************************************
 *************************************************************************************
@@ -231,27 +238,42 @@ uint8_t gState;
 
 static void UpdateLeds() {
 	TurnOffLeds();
-
-	switch(mCounter){
-		case 0: Led_RGB(LED_RGB,0x00,0xFF,0x00); break; // Green
-		case 1: Led_RGB(LED_RGB,0xFF,0x00,0x00); break; // Red
-		case 2: Led_RGB(LED_RGB,0x00,0x00,0xFF); break; // Blue
-		case 3: LED_TurnOnAllLeds(); break;
+	switch (mCounter) {
+		case 0: // Verde
+			LED_TurnOnLed(LED3);
+			LED_TurnOffLed(LED2);
+			LED_TurnOffLed(LED4);
+			break;
+		case 1: // Rojo
+			LED_TurnOffLed(LED4);
+			LED_TurnOnLed(LED2);
+			LED_TurnOffLed(LED3);
+			break;
+		case 2: // Azul
+			LED_TurnOffLed(LED3);
+			LED_TurnOffLed(LED2);
+			LED_TurnOnLed(LED4);
+			break;
+		case 3: // Todos
+			LED_TurnOnAllLeds();
+			break;
 	}
 }
 
 
-static void SendCounterPacket(void) {
+/*
+static void SendCounterPacket() {
+
+	char buffer[2];
 
     if(gState != stateListen) {
         return;
     }
 
-    char buffer[2];
     buffer[0]= mCounter;
     int len = 1;
 
-    // Crear un nuevo paquete  para no interferir con el flujo UART
+    // Crear un nuevo paquete
     nwkToMcpsMessage_t *pPacket = MSG_Alloc(sizeof(nwkToMcpsMessage_t) + len);
     if(!pPacket) {
         return; // Fallo de asignación
@@ -283,6 +305,56 @@ static void SendCounterPacket(void) {
         MSG_Free(pPacket);
     }
 }
+*/
+
+static void SendCounterPacket() {
+
+	char buffer[10];
+
+	if(gState != stateListen) {
+		return;
+	}
+
+	const char prefix[] = "Counter:";
+	uint8_t prefixLen = sizeof(prefix) - 1;
+
+	memcpy(buffer, prefix, prefixLen); // copiamos el string al buffer
+
+	buffer[prefixLen] = '0' + mCounter;
+
+	int len = prefixLen + 1;
+
+
+	// Creamos un nuevo paquete
+	nwkToMcpsMessage_t *pPacket = MSG_Alloc(sizeof(nwkToMcpsMessage_t) + len);
+	if(!pPacket) {
+		return;
+	}
+
+	// Configuración del paquete
+	pPacket->msgType = gMcpsDataReq_c;
+	pPacket->msgData.dataReq.pMsdu = (uint8_t*)(&pPacket->msgData.dataReq + 1);
+	memcpy(pPacket->msgData.dataReq.pMsdu, buffer, len);
+
+	FLib_MemCpy(&pPacket->msgData.dataReq.dstAddr, &mCoordInfo.coordAddress, 8);
+	FLib_MemCpy(&pPacket->msgData.dataReq.srcAddr, maMyAddress, 8);
+	FLib_MemCpy(&pPacket->msgData.dataReq.dstPanId, &mCoordInfo.coordPanId, 2);
+	FLib_MemCpy(&pPacket->msgData.dataReq.srcPanId, &mCoordInfo.coordPanId, 2);
+
+	pPacket->msgData.dataReq.dstAddrMode = mCoordInfo.coordAddrMode;
+	pPacket->msgData.dataReq.srcAddrMode = mAddrMode;
+	pPacket->msgData.dataReq.msduLength = len;
+	pPacket->msgData.dataReq.txOptions = gMacTxOptionsAck_c;
+	pPacket->msgData.dataReq.msduHandle = mMsduHandle++;
+	pPacket->msgData.dataReq.securityLevel = gMacSecurityNone_c;
+
+	// Enviamos el paquete
+	if(NWK_MCPS_SapHandler(pPacket, macInstance) == gSuccess_c) {
+		mcPendingPackets++;
+	} else {
+		MSG_Free(pPacket);
+	}
+}
 
 static void TimerCallback(void *param) {
     OSA_EventSet(mMyEvents, gMyNewTaskEvent_SendPacket);
@@ -297,9 +369,9 @@ void My_Task(osaTaskParam_t argument) {
         OSA_EventWait(mMyEvents, osaEventFlagsAll_c, FALSE, osaWaitForever_c, &ev);
 
         if(ev & gMyNewTaskEvent_SendPacket) {
-            mCounter = (mCounter + 1)%4;
             UpdateLeds();
             SendCounterPacket();
+            mCounter = (mCounter + 1) % 4;
         }
 
         if(ev & gMyNewTaskEvent_SW3_Pressed) {
@@ -337,6 +409,11 @@ void main_task(uint32_t param)
 {
     static uint8_t initialized = FALSE;
     
+    /* Define the init structure for the input switch pin */
+    gpio_pin_config_t sw_config = {
+        kGPIO_DigitalInput, 0,
+    };
+
     if( !initialized )
     {
         initialized = TRUE;  
@@ -349,7 +426,12 @@ void main_task(uint32_t param)
         Phy_Init();
         RNG_Init(); /* RNG must be initialized after the PHY is Initialized */
         MAC_Init();
-        MyTask_Init(); /*****************************************************/
+
+        GPIO_PinInit(GPIOC, BOARD_SW3_GPIO_PIN, &sw_config);
+        GPIO_PinInit(GPIOC, BOARD_SW4_GPIO_PIN, &sw_config);
+
+        //MyTask_Init();
+
 #if mEnterLowPowerWhenIdle_c
         PWR_Init();
         PWR_DisallowDeviceToSleep();
@@ -362,7 +444,7 @@ void main_task(uint32_t param)
         macInstance = BindToMAC( (instanceId_t)0 );
         Mac_RegisterSapHandlers( MCPS_NWK_SapHandler, MLME_NWK_SapHandler, macInstance );
 
-        //App_init();
+        App_init();
 
         /* Create application task */
         mAppTaskHandler = OSA_TaskCreate(OSA_TASK(AppThread), NULL);
@@ -474,7 +556,7 @@ void App_init( void )
     MSG_InitQueue(&mMcpsNwkInputQueue);
     
     /*signal app ready*/
-    LED_StartSerialFlash(LED1);
+   // LED_StartSerialFlash(LED1);
 #if mEnterLowPowerWhenIdle_c
     if (!PWRLib_MCU_WakeupReason.Bits.DeepSleepTimeout)
     {
@@ -637,6 +719,7 @@ void AppThread(osaTaskParam_t argument)
                             
                             gState = stateAssociate;
                             OSA_EventSet(mAppEvent, gAppEvtDummyEvent_c);
+                            MyTask_Init(); /*****************************************************/
                         }
                         else
                         {
@@ -932,6 +1015,8 @@ static uint8_t App_HandleScanActiveConfirm(nwkMessage_t *pMsg)
           {
             /* Save the information of the coordinator candidate. If we
                find a better candiate, the information will be replaced. */
+
+        	pPanDesc->logicalChannel = 11; // Asignamos el canal *******************
             FLib_MemCpy(&mCoordInfo, pPanDesc, sizeof(panDescriptor_t));
             bestLinkQuality = pPanDesc->linkQuality;
             rc = errorNoError;
@@ -1319,19 +1404,29 @@ static void App_HandleKeys
 #if gKBD_KeysCount_c > 0 
     switch ( events ) 
     { 
-    case gKBD_EventLongSW1_c:
-        OSA_EventSet(mAppEvent, gAppEvtPressedRestoreNvmBut_c);
-    case gKBD_EventLongSW2_c:
-    case gKBD_EventLongSW3_c:
-    case gKBD_EventLongSW4_c:
-    case gKBD_EventSW1_c:
-    case gKBD_EventSW2_c:
-    case gKBD_EventSW3_c:
+    case 1:
+	OSA_EventSet(mMyEvents, gMyNewTaskEvent_SW4_Pressed); /*****************/
+    	break;
+    case 2:
     	OSA_EventSet(mMyEvents, gMyNewTaskEvent_SW3_Pressed); /*****************/
     	break;
-    case gKBD_EventSW4_c:
-    	OSA_EventSet(mMyEvents, gMyNewTaskEvent_SW4_Pressed); /*****************/
+    default:
     	break;
+//    case gKBD_EventLongSW1_c:
+//        OSA_EventSet(mAppEvent, gAppEvtPressedRestoreNvmBut_c);
+//        break;
+//    case gKBD_EventLongSW2_c:
+//    case gKBD_EventLongSW3_c:
+//    case gKBD_EventLongSW4_c:
+//    case gKBD_EventSW1_c:
+//    case gKBD_EventSW2_c:
+//    	break;
+//    case gKBD_EventSW3_c:
+//    	OSA_EventSet(mMyEvents, gMyNewTaskEvent_SW3_Pressed); /*****************/
+//    	break;
+//    case gKBD_EventSW4_c:
+//    	OSA_EventSet(mMyEvents, gMyNewTaskEvent_SW4_Pressed); /*****************/
+//    	break;
 #if gTsiSupported_d
     case gKBD_EventSW5_c:    
     case gKBD_EventSW6_c:    
