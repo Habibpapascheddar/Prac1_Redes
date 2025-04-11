@@ -153,6 +153,8 @@ static void myTaskTimerCallback(void *param)
 		if(current_devices[counter].currently_counter==current_devices[counter].last_counter){
 			current_devices[counter].status=NOT_ACTIVE;
 			DEV_count--;
+		Serial_Print(interfaceId,"Dispositivo enlazado perdido con short address", gAllowToBlock_d);
+		 Serial_PrintHex(interfaceId, (uint8_t*)&current_devices[counter].short_address, 2, gPrtHexNoFormat_c);
 		}
 	}
 	if(counter<4){
@@ -778,17 +780,22 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 	    	for(int i=0;i<10;i++){
 	    		if(DEV_AD[i].Extended_address==pMsgIn->msgData.associateInd.deviceAddress){
 	    			for(int j=0;j<DEV_TO_ADMIT;j++){
-	    				if(current_devices[j].status==NOT_ACTIVE){
+	    				if(current_devices[j].status==NOT_ACTIVE ||(current_devices[j].status==ACTIVE&&current_devices[j].Extended_address==DEV_AD[i].Extended_address)){
 	    					current_devices[j].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
 	    					pAssocRes->assocShortAddress = DEV_AD[i].short_address;
 	    					current_devices[j].short_address=DEV_AD[i].short_address;
 	    					current_devices[j].status=ACTIVE;
-	    					pAssocRes->assocShortAddress = DEV_AD[DEV_detected].short_address;
-	    				   	Serial_Print(interfaceId, "Dispositivo ya enlazado anteriormente con short Address de ", gAllowToBlock_d); Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[DEV_detected].short_address, 2, gPrtHexNoFormat_c);
-	    					break;
+
+	    					pAssocRes->assocShortAddress = DEV_AD[i].short_address;
+	    				   	Serial_Print(interfaceId, "Dispositivo ya enlazado anteriormente con short Address de ", gAllowToBlock_d); Serial_PrintHex(interfaceId, (uint8_t*)&DEV_AD[i].short_address, 2, gPrtHexNoFormat_c);
+	    	    			dev_connected=1;
+	    	    			DEV_detected=i;
+	    	    			current_devices[j].last_counter=55;
+	    	    			current_devices[j].currently_counter=56;
+	    				   	break;
+
 	    				}
-	    			dev_connected=1;
-	    			DEV_detected=i;
+
 	    			break;};
 	    		};
 	    	};
@@ -799,10 +806,12 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 	    	    		 pAssocRes->assocShortAddress =global_short;
 	    	    		 current_devices[j].short_address=global_short;
 	    	    		 current_devices[j].status=ACTIVE;
-	    	    		 Serial_Print(interfaceId, "Dispositivo nuevo conectado con short Address de ", gAllowToBlock_d);Serial_PrintHex(interfaceId, (uint8_t*)&current_devices[j].short_address, 2, gPrtHexNoFormat_c);
+	    	    		 Serial_Print(interfaceId, "\n \r Dispositivo nuevo conectado con short Address de ", gAllowToBlock_d);Serial_PrintHex(interfaceId, (uint8_t*)&current_devices[j].short_address, 2, gPrtHexNoFormat_c);
 	    	    		 DEV_AD[global_short].short_address=global_short;
 	    	    		 DEV_AD[global_short].Extended_address=pMsgIn->msgData.associateInd.deviceAddress;
-	    				break;
+	    	    			current_devices[j].last_counter=55;
+	    	    			current_devices[j].currently_counter=56;
+	    	    		 break;
 	    			}
 	    		}
 	     		DEV_count++;
@@ -832,7 +841,7 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 	    	};
 	    	if( gSuccess_c == NWK_MLME_SapHandler( pMsg, macInstance ) )
 	    	{
-	    		Serial_Print( interfaceId,"Done\n\r", gAllowToBlock_d );
+	    		Serial_Print( interfaceId,"\n \r Done\n\r", gAllowToBlock_d );
 	    		return errorNoError;
 	    	}
 	    	else
