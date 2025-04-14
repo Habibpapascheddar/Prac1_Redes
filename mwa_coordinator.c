@@ -155,6 +155,8 @@ static void myTaskTimerCallback(void *param)
 			DEV_count--;
 		Serial_Print(interfaceId,"Dispositivo enlazado perdido con short address", gAllowToBlock_d);
 		 Serial_PrintHex(interfaceId, (uint8_t*)&current_devices[counter].short_address, 2, gPrtHexNoFormat_c);
+		}else{
+			current_devices[counter].last_counter=current_devices[counter].currently_counter;
 		}
 	}
 	if(counter<4){
@@ -793,7 +795,6 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 	    	    			current_devices[j].last_counter=55;
 	    	    			current_devices[j].currently_counter=56;
 	    				   	break;
-
 	    				}
 
 	    			break;};
@@ -932,8 +933,14 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
 
 			LED_TurnOffAllLeds();
 		}
-	    current_devices[pMsgIn->msgData.dataInd.srcAddr].last_counter=current_devices[pMsgIn->msgData.dataInd.srcAddr].currently_counter;
-	    current_devices[pMsgIn->msgData.dataInd.srcAddr].currently_counter=pMsgIn->msgData.dataInd.pMsdu[8];
+	    for(int i=0;i<5;i++){
+	    	if(pMsgIn->msgData.dataInd.srcAddr==current_devices[i].short_address){
+	    		current_devices[i].last_counter=current_devices[i].currently_counter;
+	    		current_devices[i].currently_counter=pMsgIn->msgData.dataInd.pMsdu[8];
+	    		break;
+	    	}
+	    }
+
 
 		//Dirección de quien lo envio
 	    uint16_t NodeAddr = pMsgIn->msgData.dataInd.srcAddr;
